@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SMILEDEMIC</title>
+<style>
+  :root {
+    --bg: #000;
+    --red: #ff1f2d;
+    --red-glow: rgba(255, 31, 45, 0.55);
+    --mono: "Courier New", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  ::selection { background: transparent; color: inherit; }
+  img {
+    -webkit-user-drag: none;
+    user-drag: none;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  body {
+    font-family: var(--mono);
+    color: var(--red);
+    display: grid;
+    place-items: center;
+    position: relative;
+  }
+
+  /* ---------- canvases ---------- */
+  canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  #bg { z-index: 0; }
+  #fx { z-index: 3; }
+
+  /* ---------- profile ---------- */
+  .profile {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+    padding: 28px;
+    color: inherit;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .avatar {
+    width: clamp(150px, 32vmin, 260px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    border: 2px solid var(--red);
+    background: #000;
+    box-shadow: 0 0 28px var(--red-glow), inset 0 0 22px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+  }
+  .avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .avatar .fallback {
+    font-size: 64px;
+    font-weight: 700;
+  }
+
+  .name {
+    font-size: clamp(22px, 4.2vmin, 34px);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-shadow: 2px 0 rgba(0, 255, 255, 0.35), -2px 0 var(--red-glow), 0 0 14px var(--red-glow);
+  }
+
+  .profile:hover .avatar,
+  .profile:focus-visible .avatar {
+    transform: scale(1.05);
+    box-shadow: 0 0 46px var(--red), inset 0 0 22px rgba(0, 0, 0, 0.6);
+  }
+  .profile:focus-visible { outline: none; }
+  .profile:focus-visible .name { text-decoration: underline; text-underline-offset: 6px; }
+
+  /* ---------- CRT overlay ---------- */
+  .crt {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+  }
+  .crt::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,0.38) 3px, rgba(0,0,0,0) 4px),
+      linear-gradient(90deg, rgba(255,0,0,0.05), rgba(0,255,0,0.025), rgba(0,0,255,0.05));
+    background-size: 100% 4px, 3px 100%;
+    animation: flicker 0.14s steps(2) infinite;
+  }
+  .crt::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.75) 100%);
+    box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.9);
+  }
+  .roll {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 18vh;
+    top: -20vh;
+    background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0.05), rgba(255,255,255,0));
+    animation: roll 7s linear infinite;
+  }
+  @keyframes roll { to { top: 120vh; } }
+  @keyframes flicker {
+    0%   { opacity: 0.94; }
+    100% { opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .roll, .crt::before { animation: none; }
+    .avatar { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+  <canvas id="bg" aria-hidden="true"></canvas>
+
+  <a class="profile" href="https://github.com/smiledemic" target="_blank" rel="noopener noreferrer" aria-label="@smiledemic on GitHub">
+    <div class="avatar">
+      <img src="system/profile/splash.png" alt="" draggable="false" onerror="this.remove(); this.parentNode.insertAdjacentHTML('beforeend','<span class=&quot;fallback&quot;>:)</span>');">
+    </div>
+    <span class="name">@smiledemic</span>
+  </a>
+
+  <canvas id="fx" aria-hidden="true"></canvas>
+  <div class="crt" aria-hidden="true"><div class="roll"></div></div>
+
+<script>
+(() => {
+  /* ===== easy knobs ===== */
+  const GLYPH      = ':)';
+  // Font for the background smiles and the cursor particles. Swap the stack to change the look.
+  const GLYPH_FONT = '"Arial Rounded MT Bold", "Trebuchet MS", "Segoe UI", system-ui, sans-serif';
+  const RED        = '255,31,45';
+  const DIR        = { x: -0.75, y: 0.66 };   // travel direction: top-right -> bottom-left
+  const PARALLAX   = 1;                       // 0 turns off cursor parallax, 2 doubles it
+  const MAX_PARTICLES = 500;
+
+  // Three depth layers: far (small, slow), mid, near (large, fast).
+  const LAYERS = [
+    { tw: 240, th: 170, count: 7, size: [14, 22],  alpha: 0.10, speed: 10, depth: 8,  seed: 11 },
+    { tw: 340, th: 250, count: 5, size: [30, 46],  alpha: 0.15, speed: 24, depth: 20, seed: 23 },
+    { tw: 560, th: 400, count: 3, size: [78, 120], alpha: 0.20, speed: 52, depth: 44, seed: 37 }
+  ];
+
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const bg = document.getElementById('bg'), fx = document.getElementById('fx');
+  const bctx = bg.getContext('2d'), fctx = fx.getContext('2d');
+  let W = 0, H = 0, dpr = 1;
+
+  const rng = seed => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+
+  /* ===== background tiles ===== */
+  function buildTile(L) {
+    const c = document.createElement('canvas');
+    c.width = Math.round(L.tw * dpr);
+    c.height = Math.round(L.th * dpr);
+    const x = c.getContext('2d');
+    x.scale(dpr, dpr);
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.fillStyle = `rgba(${RED},${L.alpha})`;
+    const r = rng(L.seed);
+    for (let i = 0; i < L.count; i++) {
+      const px = ((i * 0.618034 + r() * 0.12) % 1) * L.tw;
+      const py = ((i + 0.5) / L.count) * L.th + (r() - 0.5) * (L.th / L.count) * 0.5;
+      const size = L.size[0] + r() * (L.size[1] - L.size[0]);
+      // some are turned 90 degrees so they read as little faces
+      const rot = r() < 0.4 ? Math.PI / 2 : (r() - 0.5) * 0.5;
+      x.font = `700 ${size}px ${GLYPH_FONT}`;
+      // draw wrapped copies so the tile repeats seamlessly
+      for (const dx of [-L.tw, 0, L.tw]) for (const dy of [-L.th, 0, L.th]) {
+        x.save();
+        x.translate(px + dx, py + dy);
+        x.rotate(rot);
+        x.fillText(GLYPH, 0, 0);
+        x.restore();
+      }
+    }
+    const p = bctx.createPattern(c, 'repeat');
+    p.setTransform(new DOMMatrix().scale(1 / dpr));
+    L.pattern = p;
+    L.par = { x: 0, y: 0 };
+  }
+
+  /* ===== sizing ===== */
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = innerWidth; H = innerHeight;
+    for (const cv of [bg, fx]) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    LAYERS.forEach(buildTile);
+    if (reduce) drawBg(0, 0);
+  }
+
+  /* ===== pointer ===== */
+  let mx = 0.5, my = 0.5;               // normalised, for parallax
+  let px = -1, py = -1, lastMove = -1e9, inside = false, burst = 0;
+  const mod = (v, m) => ((v % m) + m) % m;
+
+  addEventListener('pointermove', e => {
+    const dist = px < 0 ? 0 : Math.hypot(e.clientX - px, e.clientY - py);
+    const vx = px < 0 ? 0 : e.clientX - px, vy = px < 0 ? 0 : e.clientY - py;
+    px = e.clientX; py = e.clientY;
+    mx = px / W; my = py / H;
+    inside = true;
+    lastMove = performance.now();
+    if (!reduce) {
+      const n = Math.min(6, 1 + Math.floor(dist / 8));
+      for (let i = 0; i < n; i++) emit(px, py, vx * 60, vy * 60);
+    }
+  }, { passive: true });
+  document.documentElement.addEventListener('pointerleave', () => { inside = false; px = py = -1; });
+
+  // holding the mouse / finger down makes new particles bigger
+  let down = false;
+  const DOWN_SIZE = 2.6;
+  addEventListener('pointerdown', e => {
+    down = true;
+    px = e.clientX; py = e.clientY;
+    mx = px / W; my = py / H;
+    inside = true;
+    lastMove = performance.now();
+  }, { passive: true });
+  for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { down = false; });
+  addEventListener('blur', () => { down = false; });
+
+  /* ===== particles ===== */
+  const P = [];
+  function emit(x, y, vx, vy) {
+    if (P.length >= MAX_PARTICLES) P.shift();
+    const a = Math.random() * Math.PI * 2, s = 10 + Math.random() * 40;
+    const glyph = Math.random() < 0.18;
+    P.push({
+      x: x + (Math.random() - 0.5) * 6,
+      y: y + (Math.random() - 0.5) * 6,
+      vx: Math.cos(a) * s + vx * 0.12,
+      vy: Math.sin(a) * s + vy * 0.12,
+      life: 0,
+      max: 0.9 + Math.random() * 1.1,
+      size: (glyph ? 11 + Math.random() * 10 : 1.5 + Math.random() * 3) * (down ? DOWN_SIZE : 1),
+      glyph,
+      rot: (Math.random() - 0.5) * 2,
+      ph: Math.random() * 6.28
+    });
+  }
+
+  function stepParticles(dt) {
+    const k = 1 - Math.exp(-dt * 1.5);
+    const driftX = DIR.x * 46, driftY = DIR.y * 46;   // particles settle into the background's direction
+    for (let i = P.length - 1; i >= 0; i--) {
+      const p = P[i];
+      p.life += dt;
+      if (p.life >= p.max) { P.splice(i, 1); continue; }
+      p.vx += (driftX - p.vx) * k;
+      p.vy += (driftY - p.vy) * k;
+      p.x += (p.vx + Math.sin(p.life * 6 + p.ph) * 8) * dt;
+      p.y += p.vy * dt;
+    }
+  }
+
+  function drawParticles() {
+    fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    fctx.clearRect(0, 0, W, H);
+    fctx.globalCompositeOperation = 'lighter';
+    fctx.textAlign = 'center';
+    fctx.textBaseline = 'middle';
+    for (const p of P) {
+      const a = Math.pow(1 - p.life / p.max, 1.5);
+      if (p.glyph) {
+        fctx.fillStyle = `rgba(${RED},${a * 0.9})`;
+        fctx.font = `700 ${p.size}px ${GLYPH_FONT}`;
+        fctx.save();
+        fctx.translate(p.x, p.y);
+        fctx.rotate(p.rot * p.life + Math.PI / 2);
+        fctx.fillText(GLYPH, 0, 0);
+        fctx.restore();
+      } else {
+        fctx.fillStyle = `rgba(${RED},${a * 0.25})`;
+        fctx.beginPath(); fctx.arc(p.x, p.y, p.size * 2.4, 0, 6.2832); fctx.fill();
+        fctx.fillStyle = `rgba(255,120,128,${a})`;
+        fctx.beginPath(); fctx.arc(p.x, p.y, p.size, 0, 6.2832); fctx.fill();
+      }
+    }
+    fctx.globalCompositeOperation = 'source-over';
+  }
+
+  /* ===== background ===== */
+  function drawBg(t, dt) {
+    bctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    bctx.clearRect(0, 0, W, H);
+    const e = 1 - Math.exp(-dt * 3);
+    for (const L of LAYERS) {
+      // parallax: nearer layers shift further, opposite the cursor, eased
+      const tx = reduce ? 0 : -(mx - 0.5) * 2 * L.depth * PARALLAX;
+      const ty = reduce ? 0 : -(my - 0.5) * 2 * L.depth * PARALLAX;
+      L.par.x += (tx - L.par.x) * e;
+      L.par.y += (ty - L.par.y) * e;
+      const ox = mod(DIR.x * L.speed * t + L.par.x, L.tw);
+      const oy = mod(DIR.y * L.speed * t + L.par.y, L.th);
+      bctx.save();
+      bctx.translate(ox, oy);
+      bctx.fillStyle = L.pattern;
+      bctx.fillRect(-L.tw, -L.th, W + L.tw * 2, H + L.th * 2);
+      bctx.restore();
+    }
+  }
+
+  /* ===== loop ===== */
+  let last = performance.now(), t = 0, acc = 0;
+  function frame(now) {
+    const dt = Math.min((now - last) / 1000, 0.05);
+    last = now; t += dt;
+    // keep particles flowing from the cursor while it rests
+    if (inside && (down || now - lastMove < 2500)) {
+      acc += dt * 40;
+      while (acc >= 1) { emit(px, py, 0, 0); acc -= 1; }
+    }
+    drawBg(t, dt);
+    stepParticles(dt);
+    drawParticles();
+    requestAnimationFrame(frame);
+  }
+
+  addEventListener('resize', resize);
+  resize();
+  if (!reduce) requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
