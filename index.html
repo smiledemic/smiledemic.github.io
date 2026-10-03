@@ -50,6 +50,19 @@
     pointer-events: none;
   }
   #bg { z-index: 0; }
+
+  /* background.png: sits on the solid black, under the smile layers */
+  #bgimg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: auto;
+    opacity: 0.2;
+    z-index: 0;
+    pointer-events: none;
+    display: block;
+  }
   #fx { z-index: 3; }
 
   /* ---------- profile ---------- */
@@ -66,9 +79,27 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  .avatar {
+  .avatar-wrap {
+    --frame-scale: 1;               /* bump above 1 if frame.png should extend past the avatar */
+    position: relative;
     width: clamp(150px, 32vmin, 260px);
     aspect-ratio: 1;
+    transition: transform 0.18s ease;
+  }
+  .frame {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transform: scale(var(--frame-scale));
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .avatar {
+    width: 100%;
+    height: 100%;
     border-radius: 50%;
     border: 2px solid var(--red);
     background: #000;
@@ -76,7 +107,7 @@
     overflow: hidden;
     display: grid;
     place-items: center;
-    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    transition: box-shadow 0.18s ease;
   }
   .avatar img {
     width: 100%;
@@ -96,9 +127,12 @@
     text-shadow: 2px 0 rgba(0, 255, 255, 0.35), -2px 0 var(--red-glow), 0 0 14px var(--red-glow);
   }
 
+  .profile:hover .avatar-wrap,
+  .profile:focus-visible .avatar-wrap {
+    transform: scale(1.05);
+  }
   .profile:hover .avatar,
   .profile:focus-visible .avatar {
-    transform: scale(1.05);
     box-shadow: 0 0 46px var(--red), inset 0 0 22px rgba(0, 0, 0, 0.6);
   }
   .profile:focus-visible { outline: none; }
@@ -134,7 +168,7 @@
     right: 0;
     height: 18vh;
     top: -20vh;
-    background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0.05), rgba(255,255,255,0));
+    background: linear-gradient(to bottom, rgba(255,31,45,0), rgba(255,31,45,0.14), rgba(255,31,45,0));
     animation: roll 7s linear infinite;
   }
   @keyframes roll { to { top: 120vh; } }
@@ -145,17 +179,21 @@
 
   @media (prefers-reduced-motion: reduce) {
     .roll, .crt::before { animation: none; }
-    .avatar { transition: none; }
+    .avatar-wrap, .avatar { transition: none; }
   }
 </style>
 </head>
 <body>
 
+  <img id="bgimg" src="system/images/background.png" alt="" aria-hidden="true" draggable="false" onerror="this.remove()">
   <canvas id="bg" aria-hidden="true"></canvas>
 
   <a class="profile" href="https://github.com/smiledemic" target="_blank" rel="noopener noreferrer" aria-label="@smiledemic on GitHub">
-    <div class="avatar">
-      <img src="system/images/splash.png" alt="" draggable="false" onerror="this.remove(); this.parentNode.insertAdjacentHTML('beforeend','<span class=&quot;fallback&quot;>:)</span>');">
+    <div class="avatar-wrap">
+      <div class="avatar">
+        <img src="system/images/splash.png" alt="" draggable="false" onerror="this.remove(); this.parentNode.insertAdjacentHTML('beforeend','<span class=&quot;fallback&quot;>:)</span>');">
+      </div>
+      <img class="frame" src="system/images/frame.png" alt="" aria-hidden="true" draggable="false" onerror="this.remove()">
     </div>
     <span class="name">@smiledemic</span>
   </a>
@@ -173,10 +211,14 @@
   const DIR        = { x: -0.75, y: 0.66 };   // travel direction: top-right -> bottom-left
   const PARALLAX   = 1;                       // 0 turns off cursor parallax, 2 doubles it
   const MAX_PARTICLES = 500;
+  const REPEAT_SRC   = 'system/images/repeat.png';  // replaces the farthest smile layer
+  const REPEAT_SCALE = 1;                           // tile size multiplier (1 = image's native size)
+  const REPEAT_ALPHA = 1;                           // opacity of the repeating image
 
   // Three depth layers: far (small, slow), mid, near (large, fast).
+  // The far layer uses repeat.png; it falls back to the smile text if the image is missing.
   const LAYERS = [
-    { tw: 240, th: 170, count: 7, size: [14, 22],  alpha: 0.10, speed: 10, depth: 8,  seed: 11 },
+    { tw: 240, th: 170, count: 7, size: [14, 22],  alpha: 0.10, speed: 10, depth: 8,  seed: 11, image: true },
     { tw: 340, th: 250, count: 5, size: [30, 46],  alpha: 0.15, speed: 24, depth: 20, seed: 23 },
     { tw: 560, th: 400, count: 3, size: [78, 120], alpha: 0.20, speed: 52, depth: 44, seed: 37 }
   ];
@@ -188,18 +230,37 @@
 
   const rng = seed => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
 
+  /* ===== repeat.png (far layer) ===== */
+  const repeatImg = new Image();
+  let repeatSettled = false;
+  repeatImg.onload = repeatImg.onerror = () => {
+    repeatSettled = true;
+    if (W) { buildTile(LAYERS[0]); if (reduce) drawBg(0, 0); }
+  };
+  repeatImg.src = REPEAT_SRC;
+
   /* ===== background tiles ===== */
   function buildTile(L) {
+    const useImg = L.image && repeatImg.naturalWidth > 0;
+    if (L.image && !repeatSettled) return;   // wait for repeat.png to load or fail before drawing this layer
+    if (useImg) {
+      L.tw = repeatImg.naturalWidth * REPEAT_SCALE;
+      L.th = repeatImg.naturalHeight * REPEAT_SCALE;
+    }
     const c = document.createElement('canvas');
     c.width = Math.round(L.tw * dpr);
     c.height = Math.round(L.th * dpr);
     const x = c.getContext('2d');
     x.scale(dpr, dpr);
+    if (useImg) {
+      x.globalAlpha = REPEAT_ALPHA;
+      x.drawImage(repeatImg, 0, 0, L.tw, L.th);
+    }
     x.textAlign = 'center';
     x.textBaseline = 'middle';
     x.fillStyle = `rgba(${RED},${L.alpha})`;
     const r = rng(L.seed);
-    for (let i = 0; i < L.count; i++) {
+    for (let i = 0; i < (useImg ? 0 : L.count); i++) {
       const px = ((i * 0.618034 + r() * 0.12) % 1) * L.tw;
       const py = ((i + 0.5) / L.count) * L.th + (r() - 0.5) * (L.th / L.count) * 0.5;
       const size = L.size[0] + r() * (L.size[1] - L.size[0]);
@@ -328,6 +389,7 @@
     bctx.clearRect(0, 0, W, H);
     const e = 1 - Math.exp(-dt * 3);
     for (const L of LAYERS) {
+      if (!L.pattern) continue;
       // parallax: nearer layers shift further, opposite the cursor, eased
       const tx = reduce ? 0 : -(mx - 0.5) * 2 * L.depth * PARALLAX;
       const ty = reduce ? 0 : -(my - 0.5) * 2 * L.depth * PARALLAX;
