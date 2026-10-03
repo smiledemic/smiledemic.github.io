@@ -84,6 +84,7 @@
     position: relative;
     width: clamp(150px, 32vmin, 260px);
     aspect-ratio: 1;
+    z-index:10000;
     transition: transform 0.18s ease;
   }
   .frame {
@@ -332,8 +333,8 @@
     P.push({
       x: x + (Math.random() - 0.5) * 6,
       y: y + (Math.random() - 0.5) * 6,
-      vx: Math.cos(a) * s + vx * 0.12,
-      vy: Math.sin(a) * s + vy * 0.12,
+      vx: Math.cos(a) * s + vx * 0.14,
+      vy: Math.sin(a) * s + vy * 0.14,
       life: 0,
       max: 0.9 + Math.random() * 1.1,
       size: (glyph ? 11 + Math.random() * 10 : 1.5 + Math.random() * 3) * (down ? DOWN_SIZE : 1),
