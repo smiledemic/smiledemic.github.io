@@ -121,10 +121,16 @@
     font-weight: 700;
   }
 
+  /* positioned out of flow so it never shifts the avatar; sits 15px below it */
   .name {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 15px;
+    white-space: nowrap;
     font-size: clamp(22px, 4.2vmin, 34px);
     font-weight: 700;
-    margin-top:15px;
     letter-spacing: 0.04em;
     text-shadow: 2px 0 rgba(0, 255, 255, 0.35), -2px 0 var(--red-glow), 0 0 14px var(--red-glow);
   }
@@ -196,8 +202,8 @@
         <img src="system/images/index/splash.png" alt="" draggable="false" onerror="this.remove(); this.parentNode.insertAdjacentHTML('beforeend','<span class=&quot;fallback&quot;>:)</span>');">
       </div>
       <img class="frame" src="system/images/index/frame.png" alt="" aria-hidden="true" draggable="false" onerror="this.remove()">
+      <span class="name">@smiledemic</span>
     </div>
-    <span class="name">@smiledemic</span>
   </a>
 
   <canvas id="fx" aria-hidden="true"></canvas>
